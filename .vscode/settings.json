@@ -1,0 +1,11 @@
+{
+    "go.toolsEnvVars": {
+        "CGO_ENABLED": "1",
+        "PATH": "C:\\msys64\\mingw64\\bin;${env:PATH}"
+    },
+    "gopls": {
+        "build.buildFlags": [
+            "-tags=vlc"
+        ]
+    }
+}

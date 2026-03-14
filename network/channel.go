@@ -6,26 +6,31 @@ import (
 )
 
 type Channel struct {
-	ID     string
-	Number int
-	list   *player.MediaList
-	p      player.Player
-	broad  *player.Broadcaster
+	ID         string
+	Number     int
+	list       *player.MediaList
+	p          player.Player
+	broad      *player.Broadcaster
+	stereoOnly bool
 }
 
-func NewChannel(list *player.MediaList, broadcasterPort int, number int, protocol string) *Channel {
+func NewChannel(list *player.MediaList, broadcasterPort int, number int, protocol string, stereoOnly bool) (*Channel, error) {
 	broad := player.NewBroadcaster(list, broadcasterPort)
 	broad.Protocol = protocol
+	broad.ForceStereo = stereoOnly
 
 	c := &Channel{
-		ID:     uuid.New().String(),
-		Number: number,
-		list:   list,
-		broad:  broad,
+		ID:         uuid.New().String(),
+		Number:     number,
+		list:       list,
+		broad:      broad,
+		stereoOnly: stereoOnly,
 	}
 	// Start the background broadcast immediately
-	_ = c.broad.Start()
-	return c
+	if err := c.broad.Start(); err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 func (c *Channel) Season() int {
@@ -48,9 +53,13 @@ func (c *Channel) PlayWith(p player.Player) error {
 	if err != nil {
 		return err
 	}
-	
+
 	c.p = p
 	return p.Play(c.list)
+}
+
+func (c *Channel) Broadcaster() *player.Broadcaster {
+	return c.broad
 }
 
 func (c *Channel) UpNext() string {
@@ -63,7 +72,7 @@ func (c *Channel) Current() string {
 
 func (c *Channel) PlayNext() string {
 	_ = c.broad.Advance()
-	// If the viewer player is active, it will naturally pick up the stream change 
+	// If the viewer player is active, it will naturally pick up the stream change
 	// because it's tuning into the same port.
 	return c.Current()
 }

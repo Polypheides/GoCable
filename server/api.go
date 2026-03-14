@@ -2,9 +2,11 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/Polypheides/go-homelab-cable/domain"
 	"github.com/Polypheides/go-homelab-cable/network"
@@ -12,12 +14,17 @@ import (
 )
 
 func (s *Server) getNetworks(e echo.Context) error {
+	host := e.Request().Host
+	if host == "" || host == "localhost" || host == "127.0.0.1" || strings.HasPrefix(host, "127.0.0.1:") || strings.HasPrefix(host, "localhost:") {
+		host = network.GetLocalIP() + ":" + s.Network.WebServerPort
+	}
 	return e.JSON(http.StatusOK, []domain.Network{
 		{
-			Name:            s.Network.Name,
-			Owner:           s.Network.Owner,
-			CallSign:        s.Network.CallSign,
-			MasterStreamURL: s.Network.MasterStreamURL(),
+			Name:                s.Network.Name,
+			Owner:               s.Network.Owner,
+			CallSign:            s.Network.CallSign,
+			MasterStreamURL:     s.Network.MasterStreamURL(),
+			HttpMasterStreamURL: fmt.Sprintf("http://%s/master", host),
 		},
 	})
 }
@@ -25,8 +32,9 @@ func (s *Server) getNetworks(e echo.Context) error {
 func (s *Server) getChannels(e echo.Context) error {
 	channels := s.Network.Channels()
 	models := make([]domain.Channel, 0, len(channels))
+	host := e.Request().Host
 	for _, c := range channels {
-		models = append(models, domain.ToChannelModel(s.Network, c))
+		models = append(models, domain.ToChannelModel(s.Network, c, host))
 	}
 
 	// Sort by StreamURL (Port) to keep the CLI stable
@@ -50,7 +58,7 @@ func (s *Server) getChannel(e echo.Context) error {
 
 func (s *Server) setChannelLive(e echo.Context) error {
 	idParam := e.Param("channel_id")
-	
+
 	var c *network.Channel
 	var err error
 
@@ -115,5 +123,5 @@ func (s *Server) liveChannel(e echo.Context) error {
 }
 
 func (s *Server) jsonChannel(e echo.Context, c *network.Channel) error {
-	return e.JSON(http.StatusOK, domain.ToChannelModel(s.Network, c))
+	return e.JSON(http.StatusOK, domain.ToChannelModel(s.Network, c, e.Request().Host))
 }

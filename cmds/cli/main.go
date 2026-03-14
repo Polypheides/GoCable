@@ -10,9 +10,9 @@ import (
 	"github.com/Polypheides/go-homelab-cable/network"
 	"github.com/Polypheides/go-homelab-cable/player"
 	"github.com/Polypheides/go-homelab-cable/server"
+	cli "github.com/urfave/cli/v2"
 	"strconv"
 	"strings"
-	cli "github.com/urfave/cli/v2"
 )
 
 func main() {
@@ -27,14 +27,16 @@ func main() {
 						cCtx.String("network_owner"),
 						cCtx.String("network_callsign"),
 						cCtx.String("protocol"),
+						cCtx.Bool("stereo"),
 					)
+					n.WebServerPort = cCtx.String("port") // Ensure Network knows its external web port
 					s := server.NewServer(cCtx.String("port"), n)
-					
+
 					// Handle unified paths: path[:season][:mode]
 					paths := cCtx.StringSlice("path")
 					for _, raw := range paths {
 						cfg := parseChannelConfig(raw)
-						
+
 						// Determine strategy
 						strategy := player.MediaListSortStrategy(player.SortStratRandom{})
 						if cfg.mode == "e" || (cfg.mode == "" && cCtx.Bool("episodic")) {
@@ -45,13 +47,16 @@ func main() {
 						if err != nil {
 							return fmt.Errorf("couldn't load media from %s: %w", cfg.path, err)
 						}
-						
-						c := n.AddChannel(list)
+
+						c, err := n.AddChannel(list)
+						if err != nil {
+							return fmt.Errorf("failed to add channel for list from %s: %w", cfg.path, err)
+						}
 						if n.Live() == "" {
 							_ = n.SetChannelLive(c.ID)
 						}
 					}
-					
+
 					s.Serve()
 					return nil
 				},
@@ -82,8 +87,8 @@ func main() {
 						Usage: "the call sign of your homelab cable network",
 					},
 					&cli.StringSliceFlag{
-						Name:     "path",
-						Usage:    "path[:season][:mode] (e.g. \"C:\\Shows:1:e\")",
+						Name:  "path",
+						Usage: "path[:season][:mode] (e.g. \"C:\\Shows:1:e\")",
 					},
 					&cli.BoolFlag{
 						Name:  "episodic",
@@ -94,6 +99,11 @@ func main() {
 						Name:  "random",
 						Usage: "play media in random order (global default)",
 						Value: true,
+					},
+					&cli.BoolFlag{
+						Name:  "stereo",
+						Usage: "force 2-channel stereo AC3 for all broadcasts (better for old TVs/Pi)",
+						Value: false,
 					},
 				},
 			},
@@ -148,8 +158,8 @@ func main() {
 						},
 					},
 					{
-						Name:  "tune",
-						Usage: "switch the host-tuned live channel to the specified channel ID",
+						Name:      "tune",
+						Usage:     "switch the host-tuned live channel to the specified channel ID",
 						ArgsUsage: "<channel_id>",
 						Action: func(cCtx *cli.Context) error {
 							id := cCtx.Args().First()
@@ -213,7 +223,7 @@ func connect(ctx *cli.Context) (*client.Client, error) {
 	jsonOut := ctx.Bool("json")
 
 	c, err := client.Connect(host, port)
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("couldn't connect to homelab-cable server at %s: %w", host+":"+port, err)
 	}

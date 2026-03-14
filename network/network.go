@@ -10,21 +10,23 @@ import (
 var ErrNetworkNoChannelPlaying = errors.New("network no channel playing")
 var ErrNetworkChannelNotFound = errors.New("network channel not found")
 
-
 type Network struct {
-	Name     string
-	Owner    string
-	CallSign string
-	Protocol string // "udp" or "tcp"
+	Name          string
+	Owner         string
+	CallSign      string
+	Protocol      string // "udp" or "tcp"
+	StereoOnly    bool   // Forces all channels to stereo AC3 (idiot-device mode)
+	WebServerPort string
 
-	mu             sync.RWMutex
-	channels       map[string]*Channel
-	tunedChannel   string // The channel which is currently displaying video on the host
-	nextPort       int    // The next available port for a broadcaster
-	master         *player.MasterBroadcaster // Port 4999 relay
+	mu           sync.RWMutex
+	tuneMu       sync.Mutex // Guards channel tuning
+	channels     map[string]*Channel
+	tunedChannel string                    // The channel which is currently displaying video on the host
+	nextPort     int                       // The next available port for a broadcaster
+	master       *player.MasterBroadcaster // Port 4999 relay
 }
 
-func NewNetwork(name string, owner string, callSign string, protocol string) *Network {
+func NewNetwork(name string, owner string, callSign string, protocol string, stereoOnly bool) *Network {
 	if name == "" {
 		name = "Homelab Cable"
 	}
@@ -39,31 +41,36 @@ func NewNetwork(name string, owner string, callSign string, protocol string) *Ne
 	}
 
 	n := &Network{
-		Name:     name,
-		Owner:    owner,
-		CallSign: callSign,
-		Protocol: protocol,
-		channels: make(map[string]*Channel),
-		nextPort: 5000, // Starts at 5000
-		master:   player.NewMasterBroadcaster(),
+		Name:          name,
+		Owner:         owner,
+		CallSign:      callSign,
+		Protocol:      protocol,
+		StereoOnly:    stereoOnly,
+		WebServerPort: "3004", // Default
+		channels:      make(map[string]*Channel),
+		nextPort:      5000, // Starts at 5000
+		master:        player.NewMasterBroadcaster(),
 	}
 	n.master.Protocol = protocol
 
 	return n
 }
 
-func (n *Network) AddChannel(list *player.MediaList) *Channel {
+func (n *Network) AddChannel(list *player.MediaList) (*Channel, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
 	// Derive friendly channel number exactly from the port offset
 	// e.g. Port 5000 -> Channel 0, Port 5001 -> Channel 1
 	channelNum := n.nextPort - 5000
-	c := NewChannel(list, n.nextPort, channelNum, n.Protocol)
+	c, err := NewChannel(list, n.nextPort, channelNum, n.Protocol, n.StereoOnly)
+	if err != nil {
+		return nil, err
+	}
 	n.nextPort++
 
 	n.channels[c.ID] = c
-	return c
+	return c, nil
 }
 
 func (n *Network) Channel(ID string) (*Channel, error) {
@@ -111,6 +118,9 @@ func (n *Network) CurrentChannel() (*Channel, error) {
 }
 
 func (n *Network) SetChannelLive(ID string) error {
+	n.tuneMu.Lock()
+	defer n.tuneMu.Unlock()
+
 	c, err := n.Channel(ID)
 	if err != nil {
 		return err
@@ -123,7 +133,7 @@ func (n *Network) SetChannelLive(ID string) error {
 
 	if current != nil {
 		// When a channel is no longer live, it just continues broadcasting in the background
-		// We don't necessarily need to move it back to a NullPlayer anymore, 
+		// We don't necessarily need to move it back to a NullPlayer anymore,
 		// but we should ensure the player is cleared if needed.
 		if err := current.p.Shutdown(); err != nil {
 			return err
@@ -133,7 +143,7 @@ func (n *Network) SetChannelLive(ID string) error {
 
 	// For the new live channel, we don't start a whole new playlist,
 	// we just "tune in" to its existing broadcast.
-	p := player.NewLivePlayer()
+	p := player.NewLivePlayer(n.master)
 	if err := p.Init(); err != nil {
 		return err
 	}
@@ -164,6 +174,11 @@ func (n *Network) Live() string {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
 	return n.tunedChannel
+}
+
+// MasterBroadcaster returns the master relay instance.
+func (n *Network) MasterBroadcaster() *player.MasterBroadcaster {
+	return n.master
 }
 
 // MasterStreamURL returns the fixed URL of the master relay port (4999).

@@ -4,9 +4,11 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strings"
 	"text/template"
 
 	"github.com/Polypheides/go-homelab-cable/domain"
+	"github.com/Polypheides/go-homelab-cable/network"
 	"github.com/labstack/echo/v4"
 )
 
@@ -27,15 +29,19 @@ type Meta struct {
 func (s *Server) getHtmxStatus(e echo.Context) error {
 	channels := s.Network.Channels()
 	models := make([]domain.Channel, 0, len(channels))
+	host := e.Request().Host
+	if host == "" || host == "localhost" || host == "127.0.0.1" || strings.HasPrefix(host, "127.0.0.1:") || strings.HasPrefix(host, "localhost:") {
+		host = network.GetLocalIP() + ":" + s.Network.WebServerPort
+	}
 	for _, c := range channels {
-		models = append(models, domain.ToChannelModel(s.Network, c))
+		models = append(models, domain.ToChannelModel(s.Network, c, host))
 	}
 
 	// Sort by StreamURL (Port) to keep the UI stable
 	sort.Slice(models, func(i, j int) bool {
 		return models[i].StreamURL < models[j].StreamURL
 	})
-	
+
 	data := struct {
 		Name     string
 		Owner    string
@@ -45,7 +51,7 @@ func (s *Server) getHtmxStatus(e echo.Context) error {
 		Owner:    s.Network.Owner,
 		Channels: models,
 	}
-	
+
 	return e.Render(http.StatusOK, "status.html", data)
 }
 
@@ -79,7 +85,7 @@ func (s *Server) htmxPlayPrevious(e echo.Context) error {
 func (s *Server) htmxTune(e echo.Context) error {
 	id := e.Param("channel_id")
 	_ = s.Network.SetChannelLive(id)
-	
+
 	c, err := s.Network.Channel(id)
 	if err == nil {
 		s.logAction("TUNE", e.Request().URL.Path, c)

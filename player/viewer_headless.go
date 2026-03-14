@@ -7,7 +7,7 @@ import (
 )
 
 // NewLivePlayer returns a NullPlayer by default when VLC is not enabled.
-func NewLivePlayer() Player {
+func NewLivePlayer(master *MasterBroadcaster) Player {
 	return &NullPlayer{}
 }
 
@@ -70,7 +70,10 @@ func (n *NullPlayer) Shutdown() error {
 		n.ticker.Stop()
 	}
 	if n.done != nil {
-		n.done <- true
+		select {
+		case n.done <- true:
+		default:
+		}
 	}
 	return nil
 }

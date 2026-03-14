@@ -9,6 +9,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"path/filepath"
+	"strconv"
 	"time"
 )
 
@@ -64,7 +65,44 @@ func (s *Server) Serve() {
 	e.PUT("/htmx/channels/:channel_id/tune", s.htmxTune)
 	e.PUT("/htmx/live/next", s.htmxPlayLiveNext)
 
+	// HTTP Streaming Routes
+	e.GET("/master", s.streamMaster)
+	e.GET("/:channel_num/", s.streamChannel)
+
 	e.Logger.Fatal(e.Start(fmt.Sprintf(":%s", s.port)))
+}
+
+func (s *Server) streamMaster(c echo.Context) error {
+	c.Response().Header().Set(echo.HeaderContentType, "video/mp2t")
+	c.Response().WriteHeader(200)
+
+	err := s.Network.MasterBroadcaster().Stream(c.Request().Context(), c.Response().Writer)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Server) streamChannel(c echo.Context) error {
+	numStr := c.Param("channel_num")
+	num, err := strconv.Atoi(numStr)
+	if err != nil {
+		return echo.NewHTTPError(400, "invalid channel number")
+	}
+
+	ch, err := s.Network.ChannelByNumber(num)
+	if err != nil {
+		return echo.NewHTTPError(404, "channel not found")
+	}
+
+	c.Response().Header().Set(echo.HeaderContentType, "video/mp2t")
+	c.Response().WriteHeader(200)
+
+	err = ch.Broadcaster().Hub().Stream(c.Request().Context(), c.Response().Writer)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Server) logAction(method, uri string, c *network.Channel) {

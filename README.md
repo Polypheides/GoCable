@@ -57,7 +57,26 @@ Follow these steps exactly to get everything ready:
 - **Linux Users**: If you want the server to open a window, also run `sudo apt install vlc libvlc-dev`.
 
 ### 3. Install Go (The Compiler)
-- Download and install from [go.dev](https://go.dev/dl/).
+- Download from [go.dev](https://go.dev/dl/).
+
+<details>
+<summary><b>Step-by-Step Go Installation Guide</b></summary>
+
+#### 🐧 Linux
+1. **Cleanup**: Remove any previous installation:
+   `sudo rm -rf /usr/local/go`
+2. **Extract**: Unpack the archive into `/usr/local` (replace with your version filename):
+   `sudo tar -C /usr/local -xzf go1.XX.X.linux-amd64.tar.gz`
+3. **Set Path**: Add the following line to your `$HOME/.profile`:
+   `export PATH=$PATH:/usr/local/go/bin`
+4. **Apply**: Run `source $HOME/.profile`.
+5. **Verify**: Type `go version` to confirm.
+
+#### 🪟 Windows
+1. **Run Installer**: Open the downloaded `.msi` file and follow the prompts.
+2. **Refresh Environment**: Close and reopen any open PowerShell/CMD windows.
+3. **Verify**: Type `go version` in a new terminal window to confirm.
+</details>
 
 ---
 

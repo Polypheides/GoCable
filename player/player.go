@@ -276,7 +276,9 @@ func (b *Broadcaster) Start() error {
 
 	args := []string{
 		"-re",
-		"-fflags", "+genpts+igndts",
+		"-fflags", "+genpts+igndts+discardcorrupt+nobuffer",
+		"-analyzeduration", "1000000",
+		"-probesize", "1000000",
 		"-avoid_negative_ts", "make_zero",
 		"-f", "concat",
 		"-safe", "0",
@@ -290,6 +292,7 @@ func (b *Broadcaster) Start() error {
 		"-f", "mpegts",
 		"-mpegts_flags", "resend_headers",
 		"-muxdelay", "0",
+		"-muxpreload", "0",
 		"-y", outputURL,
 	}
 
@@ -325,6 +328,9 @@ func (b *Broadcaster) relayLoop(r io.Reader) {
 		if n > 0 {
 			b.mu.Lock()
 			for conn := range b.conns {
+				// Relax the deadline. 10ms was too aggressive and kicked clients during jitter.
+				// A 1-second deadline is still "non-blocking" enough to prevent a permanent freeze.
+				conn.SetWriteDeadline(time.Now().Add(time.Second))
 				_, err := conn.Write(buf[:n])
 				if err != nil {
 					conn.Close()
@@ -431,7 +437,8 @@ func (m *MasterBroadcaster) Tune(sourceURL string) error {
 		_ = m.Stop()
 	}
 
-	time.Sleep(500 * time.Millisecond)
+	// Reduced wait for snappier switching
+	time.Sleep(100 * time.Millisecond)
 	m.sourceURL = sourceURL
 	return m.start()
 }
@@ -458,6 +465,8 @@ func (m *MasterBroadcaster) start() error {
 
 	args := []string{
 		"-fflags", "+genpts+discardcorrupt",
+		"-analyzeduration", "5000000",
+		"-probesize", "5000000",
 		"-i", m.sourceURL,
 		"-c", "copy",
 		"-f", "mpegts",
@@ -497,6 +506,9 @@ func (m *MasterBroadcaster) relayLoop(r io.Reader) {
 		if n > 0 {
 			m.mu.Lock()
 			for conn := range m.conns {
+				// Non-blocking writes for Master relay as well.
+				// 1s is safer than 10ms for handling initial VLC buffering.
+				conn.SetWriteDeadline(time.Now().Add(time.Second))
 				_, err := conn.Write(buf[:n])
 				if err != nil {
 					conn.Close()

@@ -22,9 +22,10 @@ graph TD
 ## 🎛️ Key Features
 
 - **Multi-Channel Architecture**: Each folder you add becomes an independent channel with its own dedicated broadcast relay.
-- **TCP & UDP Support**: Choose between standard UDP or robust TCP streaming for a rock-solid viewing experience.
-- **Master Stream (Port 4999)**: A central hub port that automatically switches its broadcast to whichever channel you are currently "tuned" into.
+- **UDP, TCP & HTTP Streaming**: Three protocols supported. UDP/TCP stream to VLC directly; HTTP streaming is always-on via the built-in web server.
+- **Master Stream (Port 4999 / `/master`)**: A central hub that always broadcasts the currently tuned channel, available over UDP, TCP, and HTTP.
 - **TCP Fan-out Relayer**: Custom Go-side server allows **multiple simultaneous clients** to connect to the same TCP stream.
+- **HTTP Per-Channel Streams**: Every channel is accessible over HTTP at `http://<host>:<port>/<channel_num>/` — great for browser-based players and network compatibility.
 - **Premium Web Dashboard**: A modern, HTMX-powered interface featuring "metal" tactile controls and real-time "LCD" track updates with smooth DOM morphing.
 - **Developer-Friendly Logging**: Action-oriented server logs that show exactly what's playing on each channel without the background noise.
 - **Recursive Discovery**: Automatically find media in nested subfolders (e.g., `Season 1/`, `S02/`).
@@ -116,7 +117,13 @@ Run the server and point it to one or more folders. A "Channel" is automatically
 ```powershell
 # Binge Season 2 in order, then some Random Movies
 ./cable.exe server --path "C:\Shows\ShowName:2:e" --path "C:\Movies:r"
+
+# Use TCP instead of UDP for the broadcast protocol
+./cable.exe server --path "C:\Movies" --protocol tcp
 ```
+
+> [!NOTE]
+> The `--protocol` flag controls the **UDP/TCP broadcast** on ports 5000+. HTTP streaming via the web server (`/master`, `/<channel_num>/`) is **always available** regardless of this flag.
 
 > [!TIP]
 > If you just use `--path "C:\Shows"`, it will default to **Random**. Add `--episodic` at the end to make all "blind" paths play in order.
@@ -125,9 +132,16 @@ Run the server and point it to one or more folders. A "Channel" is automatically
 Navigate to `http://localhost:3004` to see your station's status and control channels with the **Next (<)**, **Previous (>)**, and **TUNE** buttons.
 
 ### 3. Tune in via VLC
-Open VLC and connect to the Master Stream:
-- **UDP**: `udp://@127.0.0.1:4999`
-- **TCP**: `tcp://127.0.0.1:4999`
+Open VLC and connect to the Master Stream or a specific channel:
+
+| Protocol | Master Stream | Channel 0 | Channel 1 |
+|---|---|---|---|
+| **UDP** | `udp://@127.0.0.1:4999` | `udp://@127.0.0.1:5000` | `udp://@127.0.0.1:5001` |
+| **TCP** | `tcp://127.0.0.1:4999` | `tcp://127.0.0.1:5000` | `tcp://127.0.0.1:5001` |
+| **HTTP** | `http://localhost:3004/master` | `http://localhost:3004/0/` | `http://localhost:3004/1/` |
+
+> [!TIP]
+> HTTP streams work in any browser or media player that supports `video/mp2t`. Use them when UDP/TCP is blocked by a firewall or when streaming over the internet.
 
 ---
 
@@ -148,6 +162,15 @@ The CLI allows you to control your station from the terminal:
 - **MasterBroadcaster**: Relays the stream of the active channel to port 4999.
 - **Network Layer**: Thread-safe management of channel states and "Live" tuning logic.
 - **HTMX Server**: Provides a "morphed" real-time UI that reflects station changes across all connected browsers instantly.
+- **HTTP Streaming**: The Echo web server exposes `GET /master` and `GET /:channel_num/` as `video/mp2t` HTTP streams — a ring buffer fans the FFmpeg output out to all connected HTTP clients simultaneously, with no re-encoding.
+
+### Protocols at a Glance
+
+| Protocol | Flag | Ports | Always On? |
+|---|---|---|---|
+| UDP | `--protocol udp` (default) | 4999 (master), 5000+ | ✅ |
+| TCP | `--protocol tcp` | 4999 (master), 5000+ | ✅ |
+| HTTP | *(none needed)* | Web server port (default `3004`) | ✅ Always |
 
 ---
 

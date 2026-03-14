@@ -10,6 +10,11 @@ import (
 	"time"
 )
 
+// httpClientKey is a sentinel type used as a map key for HTTP streaming clients
+// in MasterBroadcaster, avoiding use of zero-value *net.TCPConn which can panic
+// on Close() on some platforms. (Fix #6)
+type httpClientKey struct{}
+
 type MasterBroadcaster struct {
 	cmd       *exec.Cmd
 	sourceURL string
@@ -17,7 +22,7 @@ type MasterBroadcaster struct {
 
 	// TCP relay support
 	mu    sync.Mutex
-	conns map[net.Conn]chan []byte
+	conns map[any]chan []byte // key is net.Conn or httpClientKey
 	l     net.Listener
 
 	tuneMu sync.Mutex // Guard against rapid overlapping tune requests
@@ -26,7 +31,7 @@ type MasterBroadcaster struct {
 func NewMasterBroadcaster() *MasterBroadcaster {
 	return &MasterBroadcaster{
 		Protocol: "udp", // default
-		conns:    make(map[net.Conn]chan []byte),
+		conns:    make(map[any]chan []byte),
 	}
 }
 
@@ -114,7 +119,8 @@ func (m *MasterBroadcaster) connSender(conn net.Conn, ch chan []byte) {
 	}()
 
 	for buf := range ch {
-		conn.SetWriteDeadline(time.Now().Add(1 * time.Hour))
+		// FIX #9: 5-second deadline instead of 1 hour to release dead connections promptly.
+		conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		_, err := conn.Write(buf)
 		if err != nil {
 			return
@@ -130,7 +136,7 @@ func (m *MasterBroadcaster) relayLoop(r io.Reader) {
 			m.mu.Lock()
 			packet := make([]byte, n)
 			copy(packet, buf[:n])
-			for conn, ch := range m.conns {
+			for key, ch := range m.conns {
 				select {
 				case ch <- packet:
 				default:
@@ -149,7 +155,7 @@ func (m *MasterBroadcaster) relayLoop(r io.Reader) {
 					case ch <- packet:
 					default:
 					}
-					_ = conn
+					_ = key
 				}
 			}
 			m.mu.Unlock()
@@ -167,11 +173,13 @@ func (m *MasterBroadcaster) Stop() error {
 		m.l = nil
 	}
 	m.mu.Lock()
-	for conn, ch := range m.conns {
+	for key, ch := range m.conns {
 		close(ch)
-		_ = conn.Close()
+		if conn, ok := key.(net.Conn); ok {
+			_ = conn.Close()
+		}
 	}
-	m.conns = make(map[net.Conn]chan []byte)
+	m.conns = make(map[any]chan []byte)
 	m.mu.Unlock()
 	return nil
 }
@@ -184,17 +192,19 @@ func (m *MasterBroadcaster) stopFFmpeg() {
 	}
 }
 
+// Stream registers an HTTP streaming client using a typed sentinel key (not a
+// zero-value *net.TCPConn) and pipes data to w until ctx is cancelled. (Fix #6)
 func (m *MasterBroadcaster) Stream(ctx context.Context, w io.Writer) error {
 	ch := make(chan []byte, 1024)
-	dummy := &net.TCPConn{}
+	key := httpClientKey{}
 
 	m.mu.Lock()
-	m.conns[dummy] = ch
+	m.conns[key] = ch
 	m.mu.Unlock()
 
 	defer func() {
 		m.mu.Lock()
-		delete(m.conns, dummy)
+		delete(m.conns, key)
 		m.mu.Unlock()
 	}()
 

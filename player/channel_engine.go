@@ -26,6 +26,13 @@ type Broadcaster struct {
 	l     net.Listener
 	hub   *StreamHub
 
+	// relayDone is closed when the current relayLoop exits, used to prevent
+	// overlapping relay goroutines on rapid Advance/Rewind calls.
+	relayDone chan struct{}
+
+	// stopMu guards stopFFmpeg() against concurrent calls (e.g. Stop() racing with Advance()).
+	stopMu sync.Mutex
+
 	audioMeta   *AudioMetadata
 	ForceStereo bool
 
@@ -56,9 +63,10 @@ func (b *Broadcaster) Init() error {
 
 func (b *Broadcaster) updatePlaylist() error {
 	var sb strings.Builder
-	all := b.list.All()
+	// FIX #2: Snapshot() holds the MediaList lock for the entire read,
+	// preventing a TOCTOU race between All() and Current() calls.
+	all, currentFile := b.list.Snapshot()
 	currentIdx := 0
-	currentFile := b.list.Current()
 
 	for i, f := range all {
 		if f == currentFile {
@@ -170,19 +178,25 @@ func (b *Broadcaster) Start() error {
 	if err != nil {
 		return err
 	}
-	go b.relayLoop(stdout)
 
 	fmt.Printf("[Broadcaster] Starting FFmpeg for port %d\n", b.port)
 	if err := b.cmd.Start(); err != nil {
 		return err
 	}
 
+	// Track the relay goroutine so Stop/Advance/Rewind can wait for it to exit.
+	done := make(chan struct{})
+	b.relayDone = done
 	go func() {
-		err := b.cmd.Wait()
-		if err != nil {
-			fmt.Printf("[Broadcaster] FFmpeg for port %d exited with error: %v\n", b.port, err)
-		} else {
-			fmt.Printf("[Broadcaster] FFmpeg for port %d exited cleanly\n", b.port)
+		defer close(done)
+		b.relayLoop(stdout)
+	}()
+
+	// Monitor FFmpeg exit in the background.
+	go func() {
+		<-done // Wait for relay to drain first, then reap the process.
+		if b.cmd != nil {
+			b.cmd.Wait() //nolint:errcheck
 		}
 	}()
 
@@ -235,7 +249,7 @@ func (b *Broadcaster) connSender(client *streamClient) {
 			return
 		}
 
-		client.conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
+		client.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		_, err := client.conn.Write(chunk)
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
@@ -261,12 +275,14 @@ func (b *Broadcaster) relayLoop(r io.Reader) {
 		buf := make([]byte, chunkSize)
 		_, err := io.ReadFull(r, buf)
 		if err != nil {
+			// io.ReadFull guarantees buf is full when err is nil, so buf[0] is safe above.
 			if err != io.EOF && err != io.ErrUnexpectedEOF {
 				fmt.Printf("[Broadcaster] Relay loop error on port %d: %v\n", b.port, err)
 			}
 			return
 		}
 
+		// MPEG-TS sync byte check. io.ReadFull guarantees buf is exactly chunkSize bytes here.
 		if buf[0] != 0x47 {
 			continue
 		}
@@ -279,11 +295,34 @@ func (b *Broadcaster) relayLoop(r io.Reader) {
 	}
 }
 
+// stopFFmpeg kills the current FFmpeg process and waits for the relay goroutine
+// to finish draining. Must NOT be called while holding b.mu.
+// FIX #1: stopMu prevents data races when Stop() and Advance()/Rewind() fire concurrently.
+func (b *Broadcaster) stopFFmpeg() {
+	b.stopMu.Lock()
+	defer b.stopMu.Unlock()
+
+	if b.cmd != nil && b.cmd.Process != nil {
+		fmt.Printf("[Broadcaster] Stopping FFmpeg for port %d\n", b.port)
+		_ = b.cmd.Process.Kill()
+		b.cmd = nil
+	}
+	// Wait for the relay goroutine to exit so we don't have two relays running
+	// concurrently when Start() is called again immediately after.
+	if b.relayDone != nil {
+		<-b.relayDone
+		b.relayDone = nil
+	}
+}
+
 func (b *Broadcaster) Stop() error {
+	// FIX #2: stopFFmpeg (which calls cmd.Wait via relay drain) must be called
+	// BEFORE acquiring b.mu, because connSender goroutines also acquire b.mu
+	// in their deferred cleanup. Holding mu during Wait would deadlock them.
+	b.stopFFmpeg()
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
-
-	b.stopFFmpeg()
 
 	if b.hub != nil {
 		b.hub.Close()
@@ -301,19 +340,12 @@ func (b *Broadcaster) Stop() error {
 	}
 	b.conns = make(map[net.Conn]*streamClient)
 
+	// FIX #8: clean up temp playlist file on stop (covers partial Start() failures too).
 	if b.playlistFile != "" {
 		_ = os.Remove(b.playlistFile)
+		b.playlistFile = ""
 	}
 	return nil
-}
-
-func (b *Broadcaster) stopFFmpeg() {
-	if b.cmd != nil && b.cmd.Process != nil {
-		fmt.Printf("[Broadcaster] Stopping FFmpeg for port %d\n", b.port)
-		_ = b.cmd.Process.Kill()
-		_ = b.cmd.Wait()
-		b.cmd = nil
-	}
 }
 
 func (b *Broadcaster) Advance() error {
@@ -321,7 +353,7 @@ func (b *Broadcaster) Advance() error {
 	if err := b.updatePlaylist(); err != nil {
 		return err
 	}
-	b.stopFFmpeg()
+	b.stopFFmpeg() // safe: not holding mu
 	return b.Start()
 }
 
@@ -330,7 +362,7 @@ func (b *Broadcaster) Rewind() error {
 	if err := b.updatePlaylist(); err != nil {
 		return err
 	}
-	b.stopFFmpeg()
+	b.stopFFmpeg() // safe: not holding mu
 	return b.Start()
 }
 

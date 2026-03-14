@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sync"
 )
 
 // NewLivePlayer returns a VLCPlayer when the 'vlc' build tag is provided.
@@ -18,20 +19,29 @@ type VLCPlayer struct {
 	list   *MediaList
 	master *MasterBroadcaster
 
-	cmd  *exec.Cmd
-	done chan struct{}
+	cmd     *exec.Cmd
+	done    chan struct{}
+	shutMu  sync.Mutex // FIX #2: guards done channel against double-close races
+	shutOnce sync.Once  // FIX #2: ensures done is closed exactly once
 }
 
 func (p *VLCPlayer) Init() error {
+	p.shutMu.Lock()
+	defer p.shutMu.Unlock()
 	p.done = make(chan struct{})
+	p.shutOnce = sync.Once{}
 	return nil
 }
 
 func (p *VLCPlayer) Shutdown() error {
-	if p.done != nil {
-		close(p.done)
-		p.done = nil
-	}
+	// FIX #2: use sync.Once to guarantee done is closed at most once.
+	p.shutOnce.Do(func() {
+		p.shutMu.Lock()
+		if p.done != nil {
+			close(p.done)
+		}
+		p.shutMu.Unlock()
+	})
 
 	if p.cmd != nil && p.cmd.Process != nil {
 		_ = p.cmd.Process.Kill()
@@ -110,18 +120,32 @@ func (p *VLCPlayer) PlayURL(url string) error {
 	return nil
 }
 
+// FIX #1: nil guards on p.list in all methods that access it.
+
 func (p *VLCPlayer) PlayNext() error {
+	if p.list == nil {
+		return nil
+	}
 	return p.PlayURL(p.list.Advance())
 }
 
 func (p *VLCPlayer) PlayPrevious() error {
+	if p.list == nil {
+		return nil
+	}
 	return p.PlayURL(p.list.Rewind())
 }
 
 func (p *VLCPlayer) Next() string {
+	if p.list == nil {
+		return ""
+	}
 	return p.list.Next()
 }
 
 func (p *VLCPlayer) Current() string {
+	if p.list == nil {
+		return ""
+	}
 	return p.list.Current()
 }

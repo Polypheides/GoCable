@@ -12,7 +12,6 @@ type StreamHub struct {
 	size   int
 	head   int64 // Monotonic index of the next chunk to be written
 	closed bool  // Whether the hub is closed and no longer accepting data
-	mu     sync.RWMutex
 	cond   *sync.Cond
 }
 
@@ -83,27 +82,34 @@ func (h *StreamHub) Get(pos int64) ([]byte, int64, bool) {
 }
 
 // Stream pipes data from the hub to the writer until the context is canceled or the hub is closed.
+// FIX #1: a watcher goroutine broadcasts on ctx cancellation so that Get() unblocks immediately
+// when the HTTP client disconnects, preventing indefinite goroutine leaks.
 func (h *StreamHub) Stream(ctx context.Context, w io.Writer) error {
+	// Ensure the cond is broadcast when ctx is done so any in-progress
+	// cond.Wait() inside Get() wakes up and can detect the cancellation.
+	go func() {
+		<-ctx.Done()
+		h.cond.Broadcast()
+	}()
+
 	pos := h.LiveIndex() - 20
 	if pos < 0 {
 		pos = 0
 	}
 
 	for {
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			return ctx.Err()
-		default:
-			chunk, nextPos, ok := h.Get(pos)
-			if !ok {
-				return nil
-			}
-			_, err := w.Write(chunk)
-			if err != nil {
-				return err
-			}
-			pos = nextPos
 		}
+		chunk, nextPos, ok := h.Get(pos)
+		if !ok {
+			return nil
+		}
+		_, err := w.Write(chunk)
+		if err != nil {
+			return err
+		}
+		pos = nextPos
 	}
 }
 

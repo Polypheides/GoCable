@@ -18,6 +18,7 @@ type Network struct {
 	StereoOnly    bool   // Forces all channels to stereo AC3 (idiot-device mode)
 	WebServerPort string
 
+	// Lock order (to prevent deadlocks): always acquire tuneMu before mu.
 	mu           sync.RWMutex
 	tuneMu       sync.Mutex // Guards channel tuning
 	channels     map[string]*Channel
@@ -131,7 +132,7 @@ func (n *Network) SetChannelLive(ID string) error {
 		return err
 	}
 
-	if current != nil {
+	if current != nil && current.p != nil {
 		// When a channel is no longer live, it just continues broadcasting in the background
 		// We don't necessarily need to move it back to a NullPlayer anymore,
 		// but we should ensure the player is cleared if needed.

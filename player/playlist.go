@@ -53,8 +53,24 @@ func NewMediaList(list []string, sortStrat MediaListSortStrategy) (*MediaList, e
 	return ml, nil
 }
 
+// All returns a snapshot copy of the current playlist.
+// This avoids exposing the internal slice to callers who might mutate it.
 func (ml *MediaList) All() []string {
-	return ml.list
+	ml.mu.Lock()
+	defer ml.mu.Unlock()
+	out := make([]string, len(ml.list))
+	copy(out, ml.list)
+	return out
+}
+
+// Snapshot returns a copy of the full playlist and the current file atomically
+// under a single lock acquisition, preventing TOCTOU races between All() and Current().
+func (ml *MediaList) Snapshot() ([]string, string) {
+	ml.mu.Lock()
+	defer ml.mu.Unlock()
+	out := make([]string, len(ml.list))
+	copy(out, ml.list)
+	return out, ml.list[ml.current]
 }
 
 func (ml *MediaList) Current() string {

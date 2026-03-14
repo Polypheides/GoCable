@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"sort"
@@ -58,7 +59,8 @@ func (s *Server) getHtmxStatus(e echo.Context) error {
 func (s *Server) htmxPlayNext(e echo.Context) error {
 	c, err := s.Network.Channel(e.Param("channel_id"))
 	if err == nil {
-		_ = c.PlayNext()
+		next := c.PlayNext()
+		fmt.Printf("[Next] CH %d -> %s\n", c.Number, next)
 		s.logAction("PUT", e.Request().URL.Path, c)
 	}
 	return e.NoContent(http.StatusNoContent)
@@ -67,7 +69,8 @@ func (s *Server) htmxPlayNext(e echo.Context) error {
 func (s *Server) htmxPlayLiveNext(e echo.Context) error {
 	c, err := s.Network.CurrentChannel()
 	if err == nil {
-		_ = c.PlayNext()
+		next := c.PlayNext()
+		fmt.Printf("[LiveNext] CH %d -> %s\n", c.Number, next)
 		s.logAction("PUT", e.Request().URL.Path, c)
 	}
 	return e.NoContent(http.StatusNoContent)
@@ -76,7 +79,8 @@ func (s *Server) htmxPlayLiveNext(e echo.Context) error {
 func (s *Server) htmxPlayPrevious(e echo.Context) error {
 	c, err := s.Network.Channel(e.Param("channel_id"))
 	if err == nil {
-		_ = c.PlayPrevious()
+		prev := c.PlayPrevious()
+		fmt.Printf("[Prev] CH %d -> %s\n", c.Number, prev)
 		s.logAction("PUT", e.Request().URL.Path, c)
 	}
 	return e.NoContent(http.StatusNoContent)

@@ -47,22 +47,34 @@ func (n *NullPlayer) PlayURL(url string) error {
 	return nil
 }
 
+// FIX #7: nil guard on list before calling any method on it.
+
 func (n *NullPlayer) PlayNext() error {
-	n.list.Advance()
+	if n.list != nil {
+		n.list.Advance()
+	}
 	return nil
 }
 
 func (n *NullPlayer) PlayPrevious() error {
-	n.list.Rewind()
+	if n.list != nil {
+		n.list.Rewind()
+	}
 	return nil
 }
 
 func (n *NullPlayer) Next() string {
-	return n.list.Next()
+	if n.list != nil {
+		return n.list.Next()
+	}
+	return ""
 }
 
 func (n *NullPlayer) Current() string {
-	return n.list.Current()
+	if n.list != nil {
+		return n.list.Current()
+	}
+	return ""
 }
 
 func (n *NullPlayer) Shutdown() error {

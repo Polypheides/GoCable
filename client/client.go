@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Polypheides/go-homelab-cable/domain"
@@ -55,6 +56,12 @@ func Connect(host, port string) (*Client, error) {
 	return c, nil
 }
 
+// readBody reads and returns the response body as a string. Used for error messages.
+func readBody(resp *http.Response) string {
+	b, _ := io.ReadAll(resp.Body)
+	return strings.TrimSpace(string(b))
+}
+
 func (c *Client) CurrentChannel() (domain.Channel, error) {
 	var channel domain.Channel
 
@@ -64,8 +71,9 @@ func (c *Client) CurrentChannel() (domain.Channel, error) {
 	}
 	defer resp.Body.Close()
 
+	// FIX #5: include server error body in error message
 	if resp.StatusCode != http.StatusOK {
-		return channel, errors.Errorf("non-200: %v", resp.StatusCode)
+		return channel, errors.Errorf("server error %d: %s", resp.StatusCode, readBody(resp))
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -91,7 +99,7 @@ func (c *Client) Channels() ([]domain.Channel, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return channels, errors.Errorf("non-200: %v", resp.StatusCode)
+		return channels, errors.Errorf("server error %d: %s", resp.StatusCode, readBody(resp))
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -123,7 +131,7 @@ func (c *Client) Tune(channelID string) (domain.Channel, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return channel, errors.Errorf("non-200: %v", resp.StatusCode)
+		return channel, errors.Errorf("server error %d: %s", resp.StatusCode, readBody(resp))
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -156,7 +164,7 @@ func (c *Client) LiveNext() (domain.Channel, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return channel, errors.Errorf("non-200: %v", resp.StatusCode)
+		return channel, errors.Errorf("server error %d: %s", resp.StatusCode, readBody(resp))
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -170,5 +178,4 @@ func (c *Client) LiveNext() (domain.Channel, error) {
 	}
 
 	return channel, nil
-
 }

@@ -1,10 +1,10 @@
-# GoCable (Polypheides Edition) Ã°Å¸â€œÂº
+# GoCable (Polypheides Edition) 📺
 
 A high-performance Go application for playing media in your homelab the way a television station would. Set up multiple "virtual channels" that continuously broadcast media to your network.
 
 ---
 
-## Ã°Å¸â€œÂº How it Works
+## 📺 How it Works
 Think of GoCable like a physical TV rack. You point it at folders (channels), and it broadcasts them 24/7. Use the "Live Window" or "Master Stream" to watch what's currently tuned.
 
 ```mermaid
@@ -19,7 +19,7 @@ graph TD
 
 ---
 
-## Ã°Å¸Å¡â‚¬ Key Features
+## 🎛️ Key Features
 
 - **Multi-Channel Architecture**: Each folder you add becomes an independent channel with its own dedicated broadcast relay.
 - **TCP & UDP Support**: Choose between standard UDP or robust TCP streaming for a rock-solid viewing experience.
@@ -31,7 +31,7 @@ graph TD
 
 ---
 
-## Ã°Å¸Å½Å¾Ã¯Â¸Â Media Recommendations
+## 🎞️ Media Recommendations
 For the best experience (and smoothest transitions):
 - **Format**: `.mkv` or `.mp4`
 - **Codec**: **H.265 / HEVC** is highly recommended.
@@ -39,7 +39,7 @@ For the best experience (and smoothest transitions):
 
 ---
 
-## Ã°Å¸â€ºÂ Ã¯Â¸Â Dependencies
+## 🔧 Dependencies
 
 Follow these steps exactly to get everything ready:
 
@@ -62,7 +62,7 @@ Follow these steps exactly to get everything ready:
 <details>
 <summary><b>Step-by-Step Go Installation Guide</b></summary>
 
-#### Ã°Å¸ÂÂ§ Linux
+#### 🐧 Linux
 1. **Cleanup**: Remove any previous installation:
    `sudo rm -rf /usr/local/go`
 2. **Extract**: Unpack the archive into `/usr/local` (replace with your version filename):
@@ -72,7 +72,7 @@ Follow these steps exactly to get everything ready:
 4. **Apply**: Run `source $HOME/.profile`.
 5. **Verify**: Type `go version` to confirm.
 
-#### Ã°Å¸ÂªÅ¸ Windows
+#### 🪟 Windows
 1. **Run Installer**: Open the downloaded `.msi` file and follow the prompts.
 2. **Refresh Environment**: Close and reopen any open PowerShell/CMD windows.
 3. **Verify**: Type `go version` in a new terminal window to confirm.
@@ -80,7 +80,7 @@ Follow these steps exactly to get everything ready:
 
 ---
 
-## Ã°Å¸â€œÂ¦ Build Instructions
+## 📦 Build Instructions
 
 ### 1. Build the Application
 **Windows:**
@@ -104,7 +104,7 @@ go build -tags vlc -o cable ./cmds/cli
 
 ---
 
-## Ã°Å¸ÂÆ’ Quick Start
+## 🚀 Quick Start
 
 ### 1. Start the Station
 Run the server and point it to one or more folders. A "Channel" is automatically created for every `--path` you provide.
@@ -131,7 +131,7 @@ Open VLC and connect to the Master Stream:
 
 ---
 
-## Ã°Å¸â€Â§ CLI Client Commands
+## 📡 CLI Client Commands
 
 The CLI allows you to control your station from the terminal:
 
@@ -142,7 +142,7 @@ The CLI allows you to control your station from the terminal:
 
 ---
 
-## Ã°Å¸â€œÂ Technical Architecture
+## 📐 Technical Architecture
 
 - **Broadcaster**: Manages an independent FFmpeg process for each channel, streaming to unique ports (starting at 5000).
 - **MasterBroadcaster**: Relays the stream of the active channel to port 4999.
@@ -151,7 +151,7 @@ The CLI allows you to control your station from the terminal:
 
 ---
 
-## Ã¢Ââ€œ Troubleshooting (FAQ)
+## ⚠️ Troubleshooting (FAQ)
 
 **Q: I see a black screen in VLC!**
 - Ensure the server logs show a media file is "Playing". 

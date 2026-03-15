@@ -199,4 +199,13 @@ The CLI allows you to control your station from the terminal:
 - Go back to the **Dependencies** section and make sure you added FFmpeg to your system PATH!
 
 ---
+
+## 📜 Credits
+
+This project originated as a fork of [clabland/go-homelab-cable](https://github.com/clabland/go-homelab-cable). It has since been completely rewritten to support concurrent broadcasting and advanced hardware-style UI.
+
+
+---
+
 Enjoy your professional homelab broadcast experience!
+

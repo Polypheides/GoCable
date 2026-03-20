@@ -75,7 +75,9 @@ func (b *Broadcaster) updatePlaylist() error {
 			return err
 		}
 		cleanPath := filepath.ToSlash(absPath)
-		fmt.Fprintf(&sb, "file '%s'\n", cleanPath)
+		// Escape single quotes for FFmpeg concat demuxer using the triplet method
+		escapedPath := strings.ReplaceAll(cleanPath, "'", "'\\''")
+		fmt.Fprintf(&sb, "file '%s'\n", escapedPath)
 	}
 
 	return os.WriteFile(b.playlistFile, []byte(sb.String()), 0644)
